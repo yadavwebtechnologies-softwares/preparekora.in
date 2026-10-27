@@ -18,13 +18,17 @@
         <span class="brand-main">preparekora</span><span class="brand-in">.in</span>
       </a>
 
-      <!-- DESKTOP LINKS -->
       <nav class="desktop-nav" aria-label="Desktop navigation">
-        <a href="about.html">About</a>
-        <a href="find-us.html">Find Us</a>
+        <a href="about.html" data-i18n="navAbout">About</a>
+        <a href="find-us.html" data-i18n="navFindUs">Find Us</a>
       </nav>
 
       <div class="nav-actions">
+
+        <div class="lang-switch" role="group" aria-label="Language">
+          <button class="lang-btn is-active" type="button" data-lang="en" aria-pressed="true">EN</button>
+          <button class="lang-btn" type="button" data-lang="as" aria-pressed="false">অসমীয়া</button>
+        </div>
 
         <button
           class="icon-button"
@@ -40,7 +44,6 @@
           </svg>
         </button>
 
-        <!-- MOBILE HAMBURGER -->
         <button
           class="icon-button"
           id="menuToggle"
@@ -58,10 +61,14 @@
 
       </div>
 
-      <!-- MOBILE MENU -->
       <nav class="menu-panel" id="menuPanel" aria-label="Mobile navigation">
-        <a href="about.html">About</a>
-        <a href="find-us.html">Find Us</a>
+        <a href="about.html" data-i18n="navAbout">About</a>
+        <a href="find-us.html" data-i18n="navFindUs">Find Us</a>
+
+        <div class="lang-switch" role="group" aria-label="Language">
+          <button class="lang-btn is-active" type="button" data-lang="en" aria-pressed="true">EN</button>
+          <button class="lang-btn" type="button" data-lang="as" aria-pressed="false">অসমীয়া</button>
+        </div>
       </nav>
 
     </div>
@@ -70,28 +77,28 @@
   <main class="page-container">
 
     <section class="page-heading">
-      <h1>Mock Tests</h1>
-      <p>Explore mock tests and prepare for your next exam.</p>
+      <h1 data-i18n="mockTestsHeading">Mock Tests</h1>
+      <p data-i18n="mockTestsSub">Explore mock tests and prepare for your next exam.</p>
     </section>
 
     <div id="testArchive">
 
       <section class="archive-section" data-group="today">
-        <h2 class="archive-heading">Today</h2>
+        <h2 class="archive-heading" data-i18n="today">Today</h2>
         <div class="test-list" id="todayTests"></div>
       </section>
 
       <section class="archive-section" data-group="yesterday">
-        <h2 class="archive-heading">Yesterday</h2>
+        <h2 class="archive-heading" data-i18n="yesterday">Yesterday</h2>
         <div class="test-list" id="yesterdayTests"></div>
       </section>
 
       <section class="archive-section" data-group="earlier">
-        <h2 class="archive-heading">Earlier</h2>
+        <h2 class="archive-heading" data-i18n="earlier">Earlier</h2>
         <div class="test-list" id="earlierTests"></div>
       </section>
 
-      <div class="empty-state" id="archiveEmpty" hidden>
+      <div class="empty-state" id="archiveEmpty" hidden data-i18n="noMockTests">
         No mock tests available.
       </div>
 
@@ -108,13 +115,11 @@
       </div>
 
       <nav class="footer-links" aria-label="Footer navigation">
-        <a href="about.html">About</a>
-        <a href="find-us.html">Find Us</a>
+        <a href="about.html" data-i18n="navAbout">About</a>
+        <a href="find-us.html" data-i18n="navFindUs">Find Us</a>
       </nav>
     </div>
   </footer>
-
-  <!-- SEARCH OVERLAY -->
 
   <div
     class="search-overlay"
@@ -138,6 +143,7 @@
             type="search"
             id="searchInput"
             placeholder="Search tests or teachers..."
+            data-i18n-placeholder="searchPlaceholder"
             autocomplete="off"
             aria-label="Search tests or teachers"
           >
@@ -153,12 +159,13 @@
       </div>
 
       <div class="search-results" id="searchResults">
-        <div class="search-empty">Search for a mock test or teacher.</div>
+        <div class="search-empty" data-i18n="searchHint">Search for a mock test or teacher.</div>
       </div>
 
     </div>
   </div>
 
+  <script src="js/translation.js"></script>
   <script src="js/main.js"></script>
 
 </body>

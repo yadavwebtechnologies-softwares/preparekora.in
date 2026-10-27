@@ -1,313 +1,353 @@
 "use strict";
 
 /*
-  Sample test data.
-  Replace these sample entries with actual tests when needed.
+  PrepareKora — Homepage logic (self-contained).
+  Loads only translation.js. API client inlined here so
+  no extra scripts are required in index.html.
 */
 
-const mockTests = [
-  {
-    id: "sample-today-1",
-    title: "Assam GK Mock Test",
-    publisher: "Sir Rohit Biswas",
-    date: getRelativeDate(0),
-    questions: 30,
-    minutes: 25,
-    group: "today"
-  },
-  {
-    id: "sample-today-2",
-    title: "General Knowledge Practice Test",
-    publisher: "Sir Yadav Subba",
-    date: getRelativeDate(0),
-    questions: 25,
-    minutes: 20,
-    group: "today"
-  },
-  {
-    id: "sample-yesterday-1",
-    title: "Assam History Mock Test",
-    publisher: "Sir Rohit Biswas",
-    date: getRelativeDate(1),
-    questions: 30,
-    minutes: 25,
-    group: "yesterday"
-  },
-  {
-    id: "sample-earlier-1",
-    title: "Indian Polity Practice Test",
-    publisher: "Sir Yadav Subba",
-    date: getRelativeDate(3),
-    questions: 40,
-    minutes: 30,
-    group: "earlier"
+(function () {
+
+  /* ---------- API (inline) ---------- */
+
+  const API_BASE = (function () {
+    const host = window.location.hostname;
+    const isLocal =
+      host === "localhost" ||
+      host === "127.0.0.1" ||
+      host === "0.0.0.0" ||
+      host === "" ||
+      host.endsWith(".local");
+    return isLocal ? "http://localhost:8787/api" : "/api";
+  })();
+
+  async function apiFetch(path) {
+    const res = await fetch(API_BASE + path, {
+      method: "GET",
+      headers: { "Accept": "application/json" }
+    });
+    if (!res.ok) {
+      const err = new Error("HTTP " + res.status);
+      err.status = res.status;
+      throw err;
+    }
+    return res.json();
   }
-];
 
-function getRelativeDate(daysAgo) {
-  const date = new Date();
-  date.setDate(date.getDate() - daysAgo);
+  /* ---------- State ---------- */
 
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-
-  return `${year}-${month}-${day}`;
-}
-
-function formatDate(dateString) {
-  const date = new Date(dateString + "T12:00:00");
-
-  return {
-    day: date.getDate(),
-    month: date.toLocaleDateString("en-IN", {
-      month: "short"
-    })
+  const state = {
+    tests: [],
+    loaded: false
   };
-}
 
-function escapeHTML(value) {
-  return String(value).replace(/[&<>"']/g, function (character) {
-    const entities = {
-      "&": "&amp;",
-      "<": "&lt;",
-      ">": "&gt;",
-      '"': "&quot;",
-      "'": "&#039;"
+  /* ---------- DOM ---------- */
+
+  const todayList = document.getElementById("todayTests");
+  const yesterdayList = document.getElementById("yesterdayTests");
+  const earlierList = document.getElementById("earlierTests");
+  const emptyState = document.getElementById("archiveEmpty");
+
+  const menuToggle = document.getElementById("menuToggle");
+  const menuPanel = document.getElementById("menuPanel");
+  const menuIcon = document.getElementById("menuIcon");
+
+  const searchOpenBtn = document.getElementById("searchOpen");
+  const searchCloseBtn = document.getElementById("searchClose");
+  const searchOverlay = document.getElementById("searchOverlay");
+  const searchInput = document.getElementById("searchInput");
+  const searchResults = document.getElementById("searchResults");
+
+  /* ---------- Utilities ---------- */
+
+  function t(key, vars) {
+    return (window.PK && window.PK.t) ? window.PK.t(key, vars) : key;
+  }
+
+  function escapeHTML(value) {
+    return String(value).replace(/[&<>"']/g, function (ch) {
+      const map = {
+        "&": "&amp;", "<": "&lt;", ">": "&gt;",
+        '"': "&quot;", "'": "&#039;"
+      };
+      return map[ch];
+    });
+  }
+
+  function formatBadgeDate(ts) {
+    const d = new Date(ts);
+    if (isNaN(d.getTime())) return { day: "—", month: "—" };
+    const locale = (window.PK && window.PK.locale) ? window.PK.locale() : "en-IN";
+    return {
+      day: d.getDate(),
+      month: d.toLocaleDateString(locale, { month: "short" })
     };
+  }
 
-    return entities[character];
-  });
-}
+  function groupFor(ts) {
+    const d = new Date(ts);
+    if (isNaN(d.getTime())) return "earlier";
+    const now = new Date();
+    const midnight = function (x) {
+      return new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+    };
+    const diff = Math.round((midnight(now) - midnight(d)) / 86400000);
+    if (diff <= 0) return "today";
+    if (diff === 1) return "yesterday";
+    return "earlier";
+  }
 
-function createTestCard(test) {
-  const date = formatDate(test.date);
-  const card = document.createElement("article");
+  /* ---------- Card builder ---------- */
 
-  card.className = "test-card";
+  function buildCard(test) {
+    const dateParts = formatBadgeDate(test.createdAt);
+    const card = document.createElement("article");
+    card.className = "test-card";
 
-  card.innerHTML = `
-    <div class="date-badge" aria-label="${escapeHTML(test.date)}">
-      <span class="date-day">${date.day}</span>
-      <span class="date-month">${escapeHTML(date.month)}</span>
-    </div>
-
-    <div class="test-info">
-      <h3 class="test-title">${escapeHTML(test.title)}</h3>
-
-      <p class="test-publisher">
-        ${escapeHTML(test.publisher)}
-      </p>
-
-      <div class="test-meta">
-        <span>${Number(test.questions)} Questions</span>
-        <span>${Number(test.minutes)} Minutes</span>
+    card.innerHTML = `
+      <div class="date-badge" aria-hidden="true">
+        <span class="date-day">${dateParts.day}</span>
+        <span class="date-month">${escapeHTML(dateParts.month)}</span>
       </div>
-    </div>
 
-    <a
-      class="start-button"
-      href="mock-test.html?test=${encodeURIComponent(test.id)}"
-      aria-label="Start ${escapeHTML(test.title)}"
-    >
-      Start
-    </a>
-  `;
+      <div class="test-info">
+        <h3 class="test-title">${escapeHTML(test.title)}</h3>
+        <p class="test-publisher">${escapeHTML(
+          t("byLine", { name: test.publisherName || "—" })
+        )}</p>
+        <div class="test-meta">
+          <span>${Number(test.questionCount) || 0} ${escapeHTML(t("questionsUnit"))}</span>
+          <span>${Number(test.minutes) || 0} ${escapeHTML(t("minutesUnit"))}</span>
+        </div>
+      </div>
 
-  return card;
-}
+      <a class="start-button"
+         href="mock-test.html?test=${encodeURIComponent(test.id)}"
+         aria-label="${escapeHTML(t("start"))} ${escapeHTML(test.title)}">
+        ${escapeHTML(t("start"))}
+      </a>
+    `;
 
-function renderTests() {
-  const groups = {
-    today: document.getElementById("todayTests"),
-    yesterday: document.getElementById("yesterdayTests"),
-    earlier: document.getElementById("earlierTests")
-  };
+    return card;
+  }
 
-  let totalVisible = 0;
+  /* ---------- Render ---------- */
 
-  Object.values(groups).forEach(function (container) {
-    container.replaceChildren();
-  });
-
-  mockTests.forEach(function (test) {
-    const container = groups[test.group];
-
-    if (!container) {
+  function render() {
+    if (!state.loaded) {
+      [todayList, yesterdayList, earlierList].forEach(function (el) {
+        if (el) {
+          el.innerHTML =
+            '<div class="loading-state"><div class="spinner"></div>' +
+            '<span>' + escapeHTML(t("loading")) + '</span></div>';
+        }
+      });
+      if (emptyState) emptyState.hidden = true;
       return;
     }
 
-    container.appendChild(createTestCard(test));
-    totalVisible++;
-  });
+    const groups = { today: [], yesterday: [], earlier: [] };
+    state.tests.forEach(function (test) {
+      groups[groupFor(test.createdAt)].push(test);
+    });
 
-  document.querySelectorAll(".archive-section").forEach(function (section) {
-    const list = section.querySelector(".test-list");
-    section.hidden = !list || list.children.length === 0;
-  });
+    const mapping = {
+      today: todayList,
+      yesterday: yesterdayList,
+      earlier: earlierList
+    };
 
-  document.getElementById("archiveEmpty").hidden = totalVisible !== 0;
-}
+    let total = 0;
 
-/* MOBILE MENU */
+    Object.keys(mapping).forEach(function (key) {
+      const container = mapping[key];
+      if (!container) return;
+      container.replaceChildren();
+      groups[key]
+        .sort(function (a, b) { return b.createdAt - a.createdAt; })
+        .forEach(function (test) {
+          container.appendChild(buildCard(test));
+          total++;
+        });
+    });
 
-const menuToggle = document.getElementById("menuToggle");
-const menuPanel = document.getElementById("menuPanel");
-const menuIcon = document.getElementById("menuIcon");
+    document.querySelectorAll(".archive-section").forEach(function (section) {
+      const list = section.querySelector(".test-list");
+      section.hidden = !list || list.children.length === 0;
+    });
 
-const hamburgerSVG = `
-  <path d="M4 7h16"></path>
-  <path d="M4 12h16"></path>
-  <path d="M4 17h16"></path>
-`;
-
-const closeSVG = `
-  <path d="m6 6 12 12"></path>
-  <path d="M18 6 6 18"></path>
-`;
-
-function closeMenu() {
-  menuPanel.classList.remove("open");
-  menuToggle.setAttribute("aria-expanded", "false");
-  menuToggle.setAttribute("aria-label", "Open navigation menu");
-  menuIcon.innerHTML = hamburgerSVG;
-}
-
-function openMenu() {
-  menuPanel.classList.add("open");
-  menuToggle.setAttribute("aria-expanded", "true");
-  menuToggle.setAttribute("aria-label", "Close navigation menu");
-  menuIcon.innerHTML = closeSVG;
-}
-
-menuToggle.addEventListener("click", function (event) {
-  event.stopPropagation();
-
-  if (menuPanel.classList.contains("open")) {
-    closeMenu();
-  } else {
-    openMenu();
+    if (emptyState) emptyState.hidden = total !== 0;
   }
-});
 
-document.addEventListener("click", function (event) {
-  if (
-    menuPanel.classList.contains("open") &&
-    !menuPanel.contains(event.target) &&
-    !menuToggle.contains(event.target)
-  ) {
-    closeMenu();
-  }
-});
+  /* ---------- Fetch ---------- */
 
-menuPanel.querySelectorAll("a").forEach(function (link) {
-  link.addEventListener("click", closeMenu);
-});
-
-/* SEARCH */
-
-const searchOpen = document.getElementById("searchOpen");
-const searchClose = document.getElementById("searchClose");
-const searchOverlay = document.getElementById("searchOverlay");
-const searchInput = document.getElementById("searchInput");
-const searchResults = document.getElementById("searchResults");
-
-function openSearch() {
-  closeMenu();
-
-  searchOverlay.classList.add("open");
-  searchOverlay.setAttribute("aria-hidden", "false");
-
-  setTimeout(function () {
-    searchInput.focus();
-  }, 50);
-}
-
-function closeSearch() {
-  searchOverlay.classList.remove("open");
-  searchOverlay.setAttribute("aria-hidden", "true");
-  searchInput.value = "";
-  renderSearchResults("");
-}
-
-searchOpen.addEventListener("click", openSearch);
-searchClose.addEventListener("click", closeSearch);
-
-searchOverlay.addEventListener("click", function (event) {
-  if (event.target === searchOverlay) {
-    closeSearch();
-  }
-});
-
-document.addEventListener("keydown", function (event) {
-  if (event.key === "Escape") {
-    closeMenu();
-
-    if (searchOverlay.classList.contains("open")) {
-      closeSearch();
+  async function loadTests() {
+    try {
+      const res = await apiFetch("/tests");
+      state.tests = Array.isArray(res.tests) ? res.tests : [];
+      state.loaded = true;
+      render();
+    } catch (err) {
+      state.tests = [];
+      state.loaded = true;
+      render();
+      if (emptyState) {
+        emptyState.hidden = false;
+        emptyState.textContent = t("loadFailed");
+      }
     }
   }
-});
 
-function renderSearchResults(query) {
-  const normalizedQuery = query.trim().toLowerCase();
+  /* ---------- Mobile menu ---------- */
 
-  const results = mockTests.filter(function (test) {
-    const searchableText = [
-      test.title,
-      test.publisher,
-      test.date,
-      test.questions + " questions",
-      test.minutes + " minutes"
-    ].join(" ").toLowerCase();
+  const hamburgerSVG =
+    '<path d="M4 7h16"></path><path d="M4 12h16"></path><path d="M4 17h16"></path>';
+  const closeSVG =
+    '<path d="m6 6 12 12"></path><path d="M18 6 6 18"></path>';
 
-    return searchableText.includes(normalizedQuery);
-  });
-
-  searchResults.replaceChildren();
-
-  if (results.length === 0) {
-    const empty = document.createElement("div");
-    empty.className = "search-empty";
-    empty.textContent = normalizedQuery
-      ? "No matching mock tests found."
-      : "Search for a mock test or teacher.";
-
-    searchResults.appendChild(empty);
-    return;
+  function closeMenu() {
+    if (!menuPanel || !menuToggle || !menuIcon) return;
+    menuPanel.classList.remove("open");
+    menuToggle.setAttribute("aria-expanded", "false");
+    menuIcon.innerHTML = hamburgerSVG;
   }
 
-  results.forEach(function (test) {
-    const result = document.createElement("a");
+  function openMenu() {
+    if (!menuPanel || !menuToggle || !menuIcon) return;
+    menuPanel.classList.add("open");
+    menuToggle.setAttribute("aria-expanded", "true");
+    menuIcon.innerHTML = closeSVG;
+  }
 
-    result.className = "search-result";
-    result.href = "mock-test.html?test=" + encodeURIComponent(test.id);
+  if (menuToggle && menuPanel && menuIcon) {
+    menuToggle.addEventListener("click", function (e) {
+      e.stopPropagation();
+      if (menuPanel.classList.contains("open")) closeMenu();
+      else openMenu();
+    });
 
-    result.innerHTML = `
-      <div class="search-result-title">
-        ${escapeHTML(test.title)}
-      </div>
+    document.addEventListener("click", function (e) {
+      if (
+        menuPanel.classList.contains("open") &&
+        !menuPanel.contains(e.target) &&
+        !menuToggle.contains(e.target)
+      ) {
+        closeMenu();
+      }
+    });
 
-      <div class="search-result-meta">
-        ${escapeHTML(test.publisher)}
-        &nbsp;·&nbsp;
-        ${Number(test.questions)} Questions
-        &nbsp;·&nbsp;
-        ${Number(test.minutes)} Minutes
-      </div>
-    `;
+    menuPanel.querySelectorAll("a").forEach(function (link) {
+      link.addEventListener("click", closeMenu);
+    });
+  }
 
-    searchResults.appendChild(result);
+  /* ---------- Search ---------- */
+
+  function openSearch() {
+    if (!searchOverlay) return;
+    closeMenu();
+    searchOverlay.classList.add("open");
+    searchOverlay.setAttribute("aria-hidden", "false");
+    setTimeout(function () { if (searchInput) searchInput.focus(); }, 50);
+  }
+
+  function closeSearch() {
+    if (!searchOverlay) return;
+    searchOverlay.classList.remove("open");
+    searchOverlay.setAttribute("aria-hidden", "true");
+    if (searchInput) searchInput.value = "";
+    renderSearchResults("");
+  }
+
+  function renderSearchResults(query) {
+    if (!searchResults) return;
+
+    const q = query.trim().toLowerCase();
+    searchResults.replaceChildren();
+
+    if (!state.loaded) {
+      const div = document.createElement("div");
+      div.className = "search-empty";
+      div.textContent = t("loading");
+      searchResults.appendChild(div);
+      return;
+    }
+
+    const matches = state.tests.filter(function (test) {
+      const haystack = [
+        test.title || "",
+        test.publisherName || "",
+        String(test.questionCount || ""),
+        String(test.minutes || "")
+      ].join(" ").toLowerCase();
+      return haystack.indexOf(q) !== -1;
+    });
+
+    if (matches.length === 0) {
+      const div = document.createElement("div");
+      div.className = "search-empty";
+      div.textContent = q ? t("noMatches") : t("searchHint");
+      searchResults.appendChild(div);
+      return;
+    }
+
+    matches.forEach(function (test) {
+      const a = document.createElement("a");
+      a.className = "search-result";
+      a.href = "mock-test.html?test=" + encodeURIComponent(test.id);
+      a.innerHTML = `
+        <div class="search-result-title">${escapeHTML(test.title)}</div>
+        <div class="search-result-meta">
+          ${escapeHTML(t("byLine", { name: test.publisherName || "—" }))}
+          &nbsp;·&nbsp;
+          ${Number(test.questionCount) || 0} ${escapeHTML(t("questionsUnit"))}
+          &nbsp;·&nbsp;
+          ${Number(test.minutes) || 0} ${escapeHTML(t("minutesUnit"))}
+        </div>
+      `;
+      searchResults.appendChild(a);
+    });
+  }
+
+  if (searchOpenBtn) searchOpenBtn.addEventListener("click", openSearch);
+  if (searchCloseBtn) searchCloseBtn.addEventListener("click", closeSearch);
+
+  if (searchOverlay) {
+    searchOverlay.addEventListener("click", function (e) {
+      if (e.target === searchOverlay) closeSearch();
+    });
+  }
+
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") {
+      closeMenu();
+      if (searchOverlay && searchOverlay.classList.contains("open")) {
+        closeSearch();
+      }
+    }
   });
-}
 
-searchInput.addEventListener("input", function () {
-  renderSearchResults(searchInput.value);
-});
+  if (searchInput) {
+    searchInput.addEventListener("input", function () {
+      renderSearchResults(searchInput.value);
+    });
+  }
 
-/* INITIALIZE */
+  /* ---------- Language change ---------- */
 
-document.getElementById("currentYear").textContent =
-  new Date().getFullYear();
+  document.addEventListener("pk:langchange", function () {
+    render();
+    if (searchOverlay && searchOverlay.classList.contains("open")) {
+      renderSearchResults(searchInput ? searchInput.value : "");
+    }
+  });
 
-renderTests();
+  /* ---------- Init ---------- */
+
+  const yearEl = document.getElementById("currentYear");
+  if (yearEl) yearEl.textContent = new Date().getFullYear();
+
+  render();
+  loadTests();
+
+})();
